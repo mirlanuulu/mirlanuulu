@@ -63,7 +63,8 @@ def build(theme):
     t = THEMES[theme]
     rows = max(len(ART), len(INFO))
     art = ART + [""] * (rows - len(ART))
-    info = INFO + [None] * (rows - len(INFO))
+    ipad = (rows - len(INFO)) // 2
+    info = [None] * ipad + INFO + [None] * (rows - len(INFO) - ipad)
     # рисунок по центру по вертикали относительно текста
     pad_top = (rows - len(ART)) // 2
     art = [""] * pad_top + ART + [""] * (rows - len(ART) - pad_top)
