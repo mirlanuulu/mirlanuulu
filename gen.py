@@ -1,5 +1,5 @@
 """Собирает dark_mode.svg и light_mode.svg для README профиля в стиле neofetch.
-Запуск: python3 gen.py  (ASCII-рисунок берётся из art.txt рядом)."""
+Запуск: python3 gen.py  (глобус — из frames.json, его делает globe.mjs; без него берётся art.txt)."""
 from html import escape
 from pathlib import Path
 
@@ -35,8 +35,8 @@ INFO = [
 ]
 
 THEMES = {
-    "dark": dict(bg="#161b22", border="#30363d", art="#e3b341", key="#ffa657", val="#a5d6ff", dot="#616e7f", head="#c9d1d9"),
-    "light": dict(bg="#f6f8fa", border="#d0d7de", art="#9a6700", key="#953800", val="#0a3069", dot="#c2cfde", head="#24292f"),
+    "dark": dict(bg="#161b22", border="#30363d", art="#e3b341", kg="#ff7b72", key="#ffa657", val="#a5d6ff", dot="#616e7f", head="#c9d1d9"),
+    "light": dict(bg="#f6f8fa", border="#d0d7de", art="#9a6700", kg="#cf222e", key="#953800", val="#0a3069", dot="#c2cfde", head="#24292f"),
 }
 
 FONT = 15
@@ -59,37 +59,61 @@ def info_spans(item):
     return [("k", left), ("c", " " + "." * max(dots, 1) + " "), ("v", v)]
 
 
+import json
+
+FRAMES_FILE = HERE / "frames.json"
+CYCLE = 9  # секунд на полный оборот глобуса
+
+
 def build(theme):
     t = THEMES[theme]
-    rows = max(len(ART), len(INFO))
-    art = ART + [""] * (rows - len(ART))
+    if FRAMES_FILE.exists():
+        data = json.loads(FRAMES_FILE.read_text(encoding="utf-8"))
+        frames, art_w, art_h = data["frames"], data["cols"], data["rows"]
+    else:  # статичный рисунок из art.txt
+        frames, art_w, art_h = [[[("a", l)] for l in ART]], ART_W, len(ART)
+    rows = max(art_h, len(INFO))
     ipad = (rows - len(INFO)) // 2
     info = [None] * ipad + INFO + [None] * (rows - len(INFO) - ipad)
-    # рисунок по центру по вертикали относительно текста
-    pad_top = (rows - len(ART)) // 2
-    art = [""] * pad_top + ART + [""] * (rows - len(ART) - pad_top)
+    apad = (rows - art_h) // 2
 
-    width = round((ART_W + 3 + INFO_W) * CHAR + 48)
+    info_x = round(24 + (art_w + 4) * CHAR)
+    width = round(info_x + INFO_W * CHAR + 24)
     height = rows * LINE + 44
+    y0 = 24 + LINE - 5
+    n = len(frames)
+    share = 100 / n
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" font-family="ConsolasFallback,Consolas,\'JetBrains Mono\',Menlo,monospace" '
         f'width="{width}px" height="{height}px" font-size="{FONT}px">',
         "<style>"
         "@font-face{src:local('Consolas'),local('Consolas Bold');font-family:'ConsolasFallback';font-display:swap;"
         "-webkit-size-adjust:109%;size-adjust:109%}"
-        f".a{{fill:{t['art']}}}.k{{fill:{t['key']}}}.v{{fill:{t['val']}}}.c{{fill:{t['dot']}}}"
+        f".a{{fill:{t['art']}}}.kg{{fill:{t['kg']};font-weight:bold}}.o{{fill:{t['dot']}}}"
+        f".k{{fill:{t['key']}}}.v{{fill:{t['val']}}}.c{{fill:{t['dot']}}}"
         f".h{{fill:{t['head']};font-weight:bold}}text,tspan{{white-space:pre}}"
-        "</style>",
+        + (
+            f".f{{opacity:0;animation:spin {CYCLE}s step-end infinite}}"
+            f"@keyframes spin{{0%{{opacity:1}}{share:.4f}%{{opacity:0}}100%{{opacity:0}}}}"
+            if n > 1 else ""
+        )
+        + "</style>",
         f'<rect width="{width}px" height="{height}px" rx="15" fill="{t["bg"]}" stroke="{t["border"]}"/>',
-        f'<text x="24" y="{24 + LINE - 5}" xml:space="preserve">',
     ]
+    for fi, fr in enumerate(frames):
+        delay = -(CYCLE - fi * CYCLE / n) if fi else 0
+        attr = f' class="f" style="animation-delay:{delay:.4f}s"' if n > 1 else ""
+        out.append(f'<text x="24" y="{y0 + apad * LINE}" xml:space="preserve"{attr}>')
+        for i, runs in enumerate(fr):
+            dy = "0" if i == 0 else str(LINE)
+            parts = "".join(f'<tspan class="{c}">{escape(txt)}</tspan>' for c, txt in runs)
+            out.append(f'<tspan x="24" dy="{dy}">{parts}</tspan>')
+        out.append("</text>")
+    out.append(f'<text x="{info_x}" y="{y0}" xml:space="preserve">')
     for i in range(rows):
         dy = "0" if i == 0 else str(LINE)
-        a = art[i].ljust(ART_W)
-        parts = [f'<tspan x="24" dy="{dy}" class="a">{escape(a)}   </tspan>']
-        for cls, txt in info_spans(info[i]):
-            parts.append(f'<tspan class="{cls}">{escape(txt)}</tspan>')
-        out.append("".join(parts))
+        spans = "".join(f'<tspan class="{c}">{escape(x)}</tspan>' for c, x in info_spans(info[i])) or " "
+        out.append(f'<tspan x="{info_x}" dy="{dy}">{spans}</tspan>')
     out.append("</text></svg>")
     (HERE / f"{theme}_mode.svg").write_text("\n".join(out), encoding="utf-8")
 
